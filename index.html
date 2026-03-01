@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>⚓ Schiffslogbuch</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d1e35">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Logbuch">
+<style>
+  :root {
+    --navy:      #08111f;
+    --navy2:     #0d1e35;
+    --navy3:     #122440;
+    --blue:      #1560bd;
+    --lightblue: #2e86de;
+    --cyan:      #00d4ff;
+    --gold:      #f0b429;
+    --gold2:     #ffe066;
+    --white:     #f0f6ff;
+    --muted:     #8ab0d0;
+    --red:       #ff3b3b;
+    --green:     #00e676;
+    --orange:    #ff9800;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--navy);
+    color: var(--white);
+    min-height: 100vh;
+    font-size: 16px;
+  }
+
+  /* ===== HEADER ===== */
+  #header {
+    background: var(--navy2);
+    border-bottom: 2px solid var(--gold);
+    padding: 10px 14px 8px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+
+  #header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  #app-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.06em;
+  }
+
+  #clock {
+    font-size: 1.05rem;
+    color: var(--gold2);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 2x3 GPS Grid */
+  #gps-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+    margin-bottom: 7px;
+  }
+
+  .gps-cell {
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(0,212,255,0.22);
+    border-radius: 7px;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gps-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    min-width: 54px;
+  }
+
+  .gps-value {
+    font-size: 1rem;
+    color: var(--cyan);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .gps-value.warn { color: var(--orange); }
+  .gps-value.err  { color: var(--red); }
+  .gps-value.ok   { color: var(--green); }
+
+  #gps-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #gps-status-text { font-size: 0.8rem; }
+  .status-ok   { color: var(--green); }
+  .status-warn { color: var(--orange); }
+  .status-err  { color: var(--red); }
+
+  #btn-gps-refresh {
+    background: rgba(0,212,255,0.12);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #btn-gps-refresh:active { background: rgba(0,212,255,0.28); }
+
+  /* ===== MAIN ===== */
+  #main { padding: 14px; max-width: 700px; margin: 0 auto; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== TOUR LIST ===== */
+  #tour-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  #tour-list-header h2 { font-size: 1.15rem; color: var(--gold); }
+
+  .tour-card {
+    background: var(--navy2);
+    border: 1px solid rgba(240,180,41,0.3);
+    border-left: 4px solid var(--gold);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.12s;
+  }
+  .tour-card:active { background: var(--navy3); }
+  .tour-card-info { flex: 1; }
+  .tour-card-name { font-weight: 700; font-size: 1.05rem; margin-bottom: 3px; }
+  .tour-card-meta { font-size: 0.84rem; color: var(--muted); }
+  .tour-card-entries { font-size: 0.82rem; color: var(--cyan); margin-top: 3px; }
+  .tour-card-arrow { color: var(--gold); font-size: 1.4rem; padding-left: 10px; }
+
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--muted); }
+  .empty-state .anchor { font-size: 3.5rem; margin-bottom: 12px; }
+  .empty-state p { font-size: 1rem; line-height: 1.6; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    font-family: inherit;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 16px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.12s, transform 0.1s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active { transform: scale(0.95); opacity: 0.82; }
+
+  .btn-primary { background: var(--lightblue); color: #fff; }
+  .btn-gold    { background: var(--gold);      color: #08111f; }
+  .btn-danger  { background: var(--red);       color: #fff; }
+  .btn-outline { background: transparent; border: 2px solid var(--gold); color: var(--gold); }
+  .btn-sm  { padding: 8px 13px; font-size: 0.84rem; }
+  .btn-lg  { padding: 14px 20px; font-size: 1rem; }
+  .btn-full { width: 100%; }
+
+  .btn-mob {
+    background: linear-gradient(135deg, #8b0000, #ff1744);
+    color: white;
+    font-size: 1rem;
+    padding: 14px;
+    animation: pulse-red 1.2s infinite;
+  }
+  @keyframes pulse-red {
+    0%,100% { box-shadow: 0 0 14px rgba(255,23,68,0.5); }
+    50%      { box-shadow: 0 0 32px rgba(255,23,68,1); }
+  }
+
+  /* ===== SECTIONS ===== */
+  .section {
+    background: var(--navy2);
+    border: 1px solid rgba(0,212,255,0.18);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 0.8rem;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(240,180,41,0.22);
+  }
+
+  /* ===== AUTO-LOG ===== */
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+  .toggle-label { font-size: 0.97rem; }
+
+  .toggle { position: relative; width: 50px; height: 27px; }
+  .toggle input { display: none; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.12);
+    border-radius: 14px; cursor: pointer;
+    transition: 0.25s; border: 1px solid rgba(255,255,255,0.18);
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 21px; height: 21px;
+    left: 3px; top: 3px;
+    background: white; border-radius: 50%; transition: 0.25s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--lightblue); border-color: var(--cyan); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(23px); }
+
+  #interval-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px; font-size: 0.92rem; color: var(--muted);
+  }
+  #interval-input { width: 75px; text-align: center; }
+
+  #autolog-status {
+    font-size: 0.84rem; color: var(--green);
+    margin-top: 8px; display: none;
+  }
+
+  /* ===== FORM ===== */
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  select, input[type="number"], input[type="text"] {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(0,212,255,0.28);
+    border-radius: 7px;
+    color: var(--white);
+    padding: 9px 11px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    width: 100%;
+    -webkit-appearance: none;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--cyan); }
+  select option { background: var(--navy2); }
+
+  /* ===== EVENT BUTTONS ===== */
+  .event-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
+  .event-group .btn { font-size: 0.88rem; padding: 11px 8px; }
+
+  .btn-event-on {
+    background: rgba(0,230,118,0.14);
+    border: 2px solid rgba(0,230,118,0.55);
+    color: #80ffb8;
+  }
+  .btn-event-on:active { background: rgba(0,230,118,0.32); }
+
+  .btn-event-off {
+    background: rgba(255,59,59,0.14);
+    border: 2px solid rgba(255,59,59,0.5);
+    color: #ff9a9a;
+  }
+  .btn-event-off:active { background: rgba(255,59,59,0.32); }
+
+  .sonstiges-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .sonstiges-row input { flex: 1; }
+
+  /* ===== LOG ENTRIES ===== */
+  .log-entry {
+    background: rgba(0,0,0,0.3);
+    border-left: 4px solid var(--lightblue);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 13px;
+    margin-bottom: 8px;
+  }
+  .log-entry.event-entry { border-left-color: var(--gold); }
+  .log-entry.mob-entry   { border-left-color: var(--red); background: rgba(255,59,59,0.1); }
+
+  .log-time { font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .log-event-name { font-weight: 700; color: var(--gold2); margin-bottom: 5px; font-size: 0.97rem; }
+
+  .log-data { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; margin-top: 5px; }
+  .log-data-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; }
+  .log-data-val   { font-size: 0.9rem; font-weight: 600; }
+
+  /* ===== DETAIL ===== */
+  #detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  #detail-title  { font-size: 1.1rem; color: var(--gold); flex: 1; font-weight: 700; }
+  #detail-actions { margin-bottom: 14px; }
+
+  .back-btn {
+    background: none; border: none; color: var(--cyan);
+    font-size: 1.7rem; cursor: pointer; padding: 2px 6px; line-height: 1;
+  }
+
+  /* ===== ACTIVE INDICATOR ===== */
+  #active-indicator {
+    background: rgba(0,230,118,0.1);
+    border: 1px solid rgba(0,230,118,0.4);
+    border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 14px;
+    font-size: 0.9rem; color: #80ffb8;
+    display: none; align-items: center; gap: 8px;
+  }
+  .rec-dot {
+    width: 9px; height: 9px; background: var(--green);
+    border-radius: 50%; animation: blink 1s infinite; flex-shrink: 0;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.12} }
+
+  /* ===== LOGGING HEADER ===== */
+  #log-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  #log-tour-name { font-size: 1.05rem; color: var(--gold); font-weight: 700; }
+  #log-tour-meta { font-size: 0.82rem; color: var(--muted); }
+  #log-count-badge {
+    margin-left: auto;
+    background: var(--blue); color: white;
+    font-size: 0.8rem; padding: 5px 12px;
+    border-radius: 10px; font-weight: 700; white-space: nowrap;
+    border: none; cursor: pointer; font-family: inherit;
+    text-decoration: underline dotted rgba(255,255,255,0.4);
+  }
+  #log-count-badge:active { opacity: 0.75; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.82); z-index: 200;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--navy2); border: 2px solid var(--gold);
+    border-radius: 14px; padding: 24px;
+    width: 100%; max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  }
+  .modal h3 { font-size: 1.15rem; color: var(--gold); margin-bottom: 16px; font-weight: 700; }
+  .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+  .modal-buttons .btn { flex: 1; }
+
+  /* ===== TOAST ===== */
+  #toast {
+    position: fixed; bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(90px);
+    background: var(--navy3); border: 1px solid var(--gold);
+    color: var(--white); padding: 11px 22px;
+    border-radius: 22px; font-size: 0.92rem; font-weight: 600;
+    z-index: 300; transition: transform 0.28s;
+    white-space: nowrap; pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ===== MISC ===== */
+  .mt8 { margin-top: 8px; }
+  .mt12 { margin-top: 12px; }
+  .flex-gap { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .separator { height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0; }
+  .export-note { font-size: 0.8rem; color: var(--muted); text-align: center; margin-top: 14px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<!-- HEADER: Live GPS -->
+<div id="header">
+  <div id="header-top">
+    <div id="app-title">⚓ Schiffslogbuch</div>
+    <div id="clock">--:--:--</div>
+  </div>
+  <div id="gps-grid">
+    <div class="gps-cell">
+      <span class="gps-label">Breite</span>
+      <span class="gps-value" id="hdr-lat">–</span>
+    </div>
+    <div class="gps-cell">
+      <span class="gps-label">Länge</span>
+      <span class="gps-value" id="hdr-lon">–</span>
+    </div>
+    <div class="gps-cell">
+      <span class="gps-label">Kurs</span>
+      <span class="gps-value" id="hdr-hdg">–</span>
+    </div>
+    <div class="gps-cell">
+      <span class="gps-label">Speed</span>
+      <span class="gps-value" id="hdr-spd">–</span>
+    </div>
+    <div class="gps-cell">
+      <span class="gps-label">Genauigk.</span>
+      <span class="gps-value" id="hdr-acc">–</span>
+    </div>
+    <div class="gps-cell">
+      <span class="gps-label">GPS-Zeit</span>
+      <span class="gps-value" id="hdr-gpstime" style="font-size:0.82rem">–</span>
+    </div>
+  </div>
+  <div id="gps-status-row">
+    <span id="gps-status-text" class="status-warn">Warte auf GPS…</span>
+    <button id="btn-gps-refresh" onclick="refreshGPS()">↺ GPS aktualisieren</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- VIEW: TOUR-LISTE -->
+  <div id="view-list" class="view active">
+    <div id="tour-list-header">
+      <h2>Meine Touren</h2>
+      <div class="flex-gap">
+        <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ Export</button>
+        <button class="btn btn-gold btn-sm" onclick="openNewTourModal()">＋ Neue Tour</button>
+      </div>
+    </div>
+
+    <div id="active-indicator">
+      <div class="rec-dot"></div>
+      <span id="active-indicator-text">Tour läuft…</span>
+      <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="showView('logging')">Weiter loggen</button>
+    </div>
+
+    <div id="tour-list-container"></div>
+    <p class="export-note">
+      💾 Daten werden im Browser-Speicher (LocalStorage) gesichert.<br>
+      Nutze „Export" um eine JSON-Datei auf dem Gerät zu sichern!
+    </p>
+  </div>
+
+  <!-- VIEW: LOGGEN -->
+  <div id="view-logging" class="view">
+    <div id="log-header">
+      <button class="back-btn" onclick="showView('list')">←</button>
+      <div>
+        <div id="log-tour-name">–</div>
+        <div id="log-tour-meta">–</div>
+      </div>
+      <button id="log-count-badge" onclick="openActiveTourDetail()">0 Einträge</button>
+    </div>
+
+    <!-- 1. Ereignisse -->
+    <div class="section">
+      <div class="section-title">🚩 Ereignisse</div>
+      <div class="event-group">
+        <button class="btn btn-event-on"  onclick="logEvent('Motor AN')">🔧 Motor AN</button>
+        <button class="btn btn-event-off" onclick="logEvent('Motor AUS')">🔧 Motor AUS</button>
+      </div>
+      <div class="event-group">
+        <button class="btn btn-event-on"  onclick="logEvent('Segel HOCH')">⛵ Segel HOCH</button>
+        <button class="btn btn-event-off" onclick="logEvent('Segel RUNTER')">⛵ Segel RUNTER</button>
+      </div>
+      <div class="event-group">
+        <button class="btn btn-event-on"  onclick="logEvent('Anker HOCH')">⚓ Anker HOCH</button>
+        <button class="btn btn-event-off" onclick="logEvent('Anker RUNTER')">⚓ Anker RUNTER</button>
+      </div>
+      <div class="event-group">
+        <button class="btn btn-event-on"  onclick="logEvent('Beiliegen BEGINN')">🔁 Beiliegen BEGINN</button>
+        <button class="btn btn-event-off" onclick="logEvent('Beiliegen ENDE')">🔁 Beiliegen ENDE</button>
+      </div>
+      <div class="event-group">
+        <button class="btn btn-event-on"  onclick="logEvent('Ablegen Motor')">🛥 Ablegen Motor</button>
+        <button class="btn btn-event-off" onclick="logEvent('Anlegen Motor')">🛥 Anlegen Motor</button>
+      </div>
+      <div class="separator"></div>
+      <div class="sonstiges-row">
+        <input type="text" id="sonstiges-text" placeholder="Sonstiges Ereignis…">
+        <button class="btn btn-outline btn-sm" onclick="logSonstiges()">＋ Loggen</button>
+      </div>
+      <button class="btn btn-mob btn-full mt12" onclick="logEvent('MOB – Mann über Bord!')">🆘 MOB – MANN ÜBER BORD</button>
+    </div>
+
+    <!-- 2. Automatisches Logging -->
+    <div class="section">
+      <div class="section-title">⏱ Automatisches Logging</div>
+      <div class="toggle-row">
+        <span class="toggle-label">Auto-Log aktiv</span>
+        <label class="toggle">
+          <input type="checkbox" id="auto-log-toggle" onchange="toggleAutoLog()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div id="interval-row">
+        <span>Intervall:</span>
+        <input type="number" id="interval-input" value="60" min="5" max="3600">
+        <span>Sekunden</span>
+      </div>
+      <div id="autolog-status">● Läuft – nächster Eintrag in <span id="autolog-countdown">–</span> s</div>
+    </div>
+
+    <!-- 3. Manuelle Daten -->
+    <div class="section">
+      <div class="section-title">📋 Manuelle Daten</div>
+
+      <!-- GPS-Felder -->
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">GPS-Position</span>
+        <button class="btn btn-sm" style="background:rgba(0,212,255,0.15);border:1px solid var(--cyan);color:var(--cyan);padding:5px 10px;font-size:0.78rem;" onclick="fillGPSFields()">📡 GPS übernehmen</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Breite (°)</label>
+          <input type="number" id="m-lat" placeholder="z.B. 37.76416" step="0.00001">
+        </div>
+        <div class="form-group">
+          <label>Länge (°)</label>
+          <input type="number" id="m-lon" placeholder="z.B. 23.82358" step="0.00001">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Kurs (°)</label>
+          <input type="number" id="m-hdg" placeholder="0–360" min="0" max="360">
+        </div>
+        <div class="form-group">
+          <label>Speed (kn)</label>
+          <input type="number" id="m-spd" placeholder="z.B. 5.2" step="0.1" min="0">
+        </div>
+      </div>
+
+      <div class="separator"></div>
+
+      <!-- Wetter-Felder -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>Wetter</label>
+          <select id="m-weather">
+            <option value="">– wählen –</option>
+            <option>Sonnig</option>
+            <option>Bewölkt</option>
+            <option>Leicht bedeckt</option>
+            <option>Bedeckt</option>
+            <option>Regen</option>
+            <option>Gewitter</option>
+            <option>Nebel</option>
+            <option>Schnee</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Windstärke (Bft)</label>
+          <input type="number" id="m-wind-bf" placeholder="0–12" min="0" max="12">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Windrichtung (°)</label>
+          <input type="number" id="m-wind-dir" placeholder="0–360" min="0" max="360">
+        </div>
+        <div class="form-group">
+          <label>Wellenhöhe (m)</label>
+          <input type="number" id="m-wave-h" placeholder="z.B. 1.5" step="0.1" min="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Temperatur (°C)</label>
+          <input type="number" id="m-temp" placeholder="z.B. 22" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Luftdruck (hPa)</label>
+          <input type="number" id="m-pressure" placeholder="z.B. 1013" step="0.1" min="800" max="1100">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm mt8" onclick="logManualData()">💾 Daten speichern</button>
+    </div>
+
+    <!-- 4. Tour beenden -->
+    <button class="btn btn-danger btn-lg btn-full" style="margin-bottom:24px" onclick="endTour()">■ Tour beenden</button>
+  </div>
+
+  <!-- VIEW: DETAIL -->
+  <div id="view-detail" class="view">
+    <div id="detail-header">
+      <button class="back-btn" onclick="showView('list')">←</button>
+      <div id="detail-title">Tour Detail</div>
+    </div>
+    <div id="detail-actions"></div>
+    <div id="detail-content"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- MODAL: NEUE TOUR -->
+<div class="modal-overlay" id="modal-new-tour">
+  <div class="modal">
+    <h3>⚓ Neue Tour starten</h3>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Name der Tour</label>
+      <input type="text" id="new-tour-name" placeholder="z.B. Korfu → Lefkas">
+    </div>
+    <div class="form-group">
+      <label>Startort</label>
+      <input type="text" id="new-tour-place" placeholder="z.B. Korfu Town">
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-outline" onclick="closeModal('modal-new-tour')">Abbrechen</button>
+      <button class="btn btn-gold" onclick="createTour()">Starten</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LÖSCHEN -->
+<div class="modal-overlay" id="modal-delete">
+  <div class="modal">
+    <h3>Tour löschen?</h3>
+    <p style="font-size:0.94rem; color:var(--muted); line-height:1.5">
+      Alle Logbucheinträge werden unwiderruflich gelöscht.
+    </p>
+    <div class="modal-buttons">
+      <button class="btn btn-outline" onclick="closeModal('modal-delete')">Abbrechen</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let touren       = [];
+let activeTourId = null;
+let gpsCoords    = null;
+let gpsTimestamp = null;
+let gpsErr       = null;
+let gpsWatchId   = null;
+
+// Auto-Log – Timer lebt global, unabhängig von Views
+let countdownTimer   = null;
+let autoLogInterval  = 60;
+let autoLogNextAt    = 0;   // absoluter ms-Timestamp des nächsten Eintrags
+let autoLogCountdown = 0;
+
+let deleteTargetId = null;
+
+// ============================================================
+// PERSISTENCE
+// ============================================================
+function save() {
+  localStorage.setItem('logbuch_touren', JSON.stringify(touren));
+  localStorage.setItem('logbuch_active',  activeTourId || '');
+}
+
+function load() {
+  try {
+    const t = localStorage.getItem('logbuch_touren');
+    const a = localStorage.getItem('logbuch_active');
+    if (t) touren       = JSON.parse(t);
+    if (a) activeTourId = a || null;
+  } catch(e) { touren = []; activeTourId = null; }
+}
+
+function exportJSON() {
+  dl(JSON.stringify(touren, null, 2), `logbuch_${iso()}.json`);
+  showToast('Alle Touren exportiert ✓');
+}
+
+function exportTourJSON(id) {
+  const tour = touren.find(t => t.id === id);
+  if (!tour) return;
+  dl(JSON.stringify(tour, null, 2),
+    `tour_${tour.name.replace(/\s+/g,'_')}_${tour.datum.slice(0,10)}.json`);
+  showToast('Tour exportiert ✓');
+}
+
+function dl(text, filename) {
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([text], {type:'application/json'})),
+    download: filename
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+// GPS
+// ============================================================
+function startGPS() {
+  if (!navigator.geolocation) {
+    gpsErr = 'GPS nicht verfügbar';
+    updateGPSHeader();
+    return;
+  }
+  // watchPosition liefert Updates sobald sich Position ändert.
+  // maximumAge:5000 → akzeptiert gecachte Daten bis 5s alt (spart Akku)
+  // timeout:15000   → nach 15s Fehler wenn kein Signal
+  gpsWatchId = navigator.geolocation.watchPosition(
+    onGPSSuccess, onGPSError,
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+}
+
+function refreshGPS() {
+  // Frisches Update erzwingen (maximumAge: 0 = kein Cache)
+  showToast('GPS wird aktualisiert…');
+  navigator.geolocation.getCurrentPosition(
+    pos => { onGPSSuccess(pos); showToast('GPS aktualisiert ✓'); },
+    err => { onGPSError(err); showToast('GPS-Fehler: ' + err.message); },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+  );
+}
+
+function onGPSSuccess(pos) {
+  gpsCoords    = pos.coords;
+  gpsTimestamp = pos.timestamp;
+  gpsErr       = null;
+  updateGPSHeader();
+}
+
+function onGPSError(err) {
+  gpsErr = err.message || 'GPS-Fehler';
+  updateGPSHeader();
+}
+
+function updateGPSHeader() {
+  if (!gpsCoords || gpsErr) {
+    ['hdr-lat','hdr-lon','hdr-hdg','hdr-spd','hdr-acc','hdr-gpstime']
+      .forEach(id => setGPS(id, '–', 'err'));
+    const st = document.getElementById('gps-status-text');
+    st.textContent = '✗ ' + (gpsErr || 'Kein Signal');
+    st.className   = 'status-err';
+    return;
+  }
+  const c = gpsCoords;
+
+  setGPS('hdr-lat', c.latitude.toFixed(5)  + '°');
+  setGPS('hdr-lon', c.longitude.toFixed(5) + '°');
+
+  // Kurs: nur verfügbar wenn Gerät sich bewegt (speed > ~0.3 m/s)
+  // heading ist null oder NaN wenn stehend
+  if (c.heading !== null && !isNaN(c.heading)) {
+    setGPS('hdr-hdg', Math.round(c.heading) + '°');
+  } else {
+    setGPS('hdr-hdg', 'n/a', 'warn');
+  }
+
+  // Speed: null wenn stehend oder nicht messbar
+  if (c.speed !== null && !isNaN(c.speed)) {
+    setGPS('hdr-spd', (c.speed * 1.944).toFixed(1) + ' kn');
+  } else {
+    setGPS('hdr-spd', '0.0 kn');
+  }
+
+  const acc = Math.round(c.accuracy || 0);
+  setGPS('hdr-acc', acc + ' m', acc > 50 ? 'warn' : 'ok');
+
+  if (gpsTimestamp) {
+    const d = new Date(gpsTimestamp);
+    setGPS('hdr-gpstime',
+      d.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+  }
+
+  const st = document.getElementById('gps-status-text');
+  st.textContent = '✓ GPS OK  ±' + acc + ' m';
+  st.className   = acc <= 20 ? 'status-ok' : acc <= 60 ? 'status-warn' : 'status-err';
+}
+
+function setGPS(id, val, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = val;
+  el.className   = 'gps-value' + (cls ? ' ' + cls : '');
+}
+
+function snapshotGPS() {
+  if (!gpsCoords) return null;   // kein GPS → null, kein Fehlertext im Log
+  const c = gpsCoords;
+  return {
+    latitude:    c.latitude,
+    longitude:   c.longitude,
+    accuracy_m:  c.accuracy  != null ? parseFloat(c.accuracy.toFixed(1))          : null,
+    heading_deg: (c.heading !== null && !isNaN(c.heading)) ? Math.round(c.heading) : null,
+    speed_ms:    c.speed     != null ? parseFloat(c.speed.toFixed(3))              : null,
+    speed_kn:    c.speed     != null ? parseFloat((c.speed*1.944).toFixed(2))      : null,
+    gps_ts:      gpsTimestamp ? new Date(gpsTimestamp).toISOString()               : null,
+  };
+}
+
+// ============================================================
+// CLOCK
+// ============================================================
+function startClock() {
+  setInterval(() => {
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('de-DE');
+  }, 1000);
+}
+
+// ============================================================
+// VIEWS
+// ============================================================
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if (name === 'list')    renderTourList();
+  if (name === 'logging') renderLoggingView();
+}
+
+// ============================================================
+// TOUR
+// ============================================================
+function openNewTourModal() {
+  document.getElementById('new-tour-name').value  = '';
+  document.getElementById('new-tour-place').value = '';
+  openModal('modal-new-tour');
+  setTimeout(() => document.getElementById('new-tour-name').focus(), 150);
+}
+
+function createTour() {
+  const name  = document.getElementById('new-tour-name').value.trim();
+  const place = document.getElementById('new-tour-place').value.trim();
+  if (!name) { showToast('Bitte einen Namen eingeben'); return; }
+
+  const tour = {
+    id:        Date.now().toString(),
+    name, ort: place,
+    datum:     new Date().toISOString(),
+    status:    'aktiv',
+    eintraege: []
+  };
+  tour.eintraege.push(makeEntry('Tour START', null));
+  touren.unshift(tour);
+  activeTourId = tour.id;
+  save();
+  closeModal('modal-new-tour');
+  showView('logging');
+  showToast('Tour gestartet: ' + name);
+}
+
+function endTour() {
+  const tour = getActiveTour();
+  if (!tour) return;
+  tour.eintraege.push(makeEntry('Tour ENDE', null));
+  tour.status   = 'beendet';
+  tour.enddatum = new Date().toISOString();
+  activeTourId  = null;
+  stopAutoLog();
+  save();
+  showToast('Tour beendet!');
+  showView('list');
+}
+
+function getActiveTour() {
+  return touren.find(t => t.id === activeTourId) || null;
+}
+
+// ============================================================
+// ENTRIES
+// ============================================================
+function makeEntry(event, manuell) {
+  const e = { zeitstempel: new Date().toISOString(), event, gps: snapshotGPS() };
+  if (manuell && Object.keys(manuell).length) e.manuell = manuell;
+  return e;
+}
+
+function addEntry(entry) {
+  const tour = getActiveTour();
+  if (!tour) { showToast('Keine aktive Tour!'); return; }
+  tour.eintraege.push(entry);
+  save();
+  updateBadge();
+}
+
+function openActiveTourDetail() {
+  if (activeTourId) openTourDetail(activeTourId);
+}
+
+function updateBadge() {
+  const tour = getActiveTour();
+  const el   = document.getElementById('log-count-badge');
+  if (el) el.textContent = (tour ? tour.eintraege.length : 0) + ' Einträge';
+}
+
+// ============================================================
+// AUTO-LOG
+// - Timer lebt global, unabhängig von Views
+// - Kein Eintrag wenn kein GPS-Signal
+// - Absoluter Ziel-Timestamp statt reiner Countdown:
+//   → beim Entsperren des Handys werden verpasste Intervalle
+//     sofort mit dem korrekten Zeitstempel nachgeholt
+// ============================================================
+function toggleAutoLog() {
+  const on = document.getElementById('auto-log-toggle').checked;
+  if (on) startAutoLog();
+  else    stopAutoLog();
+}
+
+function startAutoLog() {
+  stopAutoLog(false); // alten stoppen, Toggle NICHT zurücksetzen
+  autoLogInterval = parseInt(document.getElementById('interval-input').value) || 60;
+
+  // Nächsten Fälligkeitszeitpunkt als absoluten ms-Timestamp speichern
+  autoLogNextAt = Date.now() + autoLogInterval * 1000;
+
+  const statusEl = document.getElementById('autolog-status');
+  if (statusEl) statusEl.style.display = 'block';
+  updateCountdownDisplay();
+
+  // Jede Sekunde prüfen ob Fälligkeit erreicht (auch nach Handy-Entsperren)
+  countdownTimer = setInterval(() => {
+    const now  = Date.now();
+    const secs = Math.max(0, Math.round((autoLogNextAt - now) / 1000));
+    autoLogCountdown = secs;
+    updateCountdownDisplay();
+
+    if (now >= autoLogNextAt) {
+      // GPS prüfen – kein Eintrag ohne Signal
+      if (!gpsCoords || gpsErr) {
+        showToast('⚠ Auto-Log: kein GPS – Eintrag übersprungen');
+        // trotzdem Intervall weiterlaufen lassen
+      } else {
+        addEntry(makeEntry('Auto', null));
+        showToast('⏱ Auto-Log gespeichert');
+      }
+      // Nächsten Zeitpunkt setzen (relativ zu jetzt, nicht zum Soll-Zeitpunkt,
+      // damit nach langer Pause nicht viele Einträge auf einmal kommen)
+      autoLogNextAt = Date.now() + autoLogInterval * 1000;
+    }
+  }, 1000);
+}
+
+function stopAutoLog(resetToggle = true) {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  autoLogCountdown = 0;
+
+  const statusEl = document.getElementById('autolog-status');
+  if (statusEl) statusEl.style.display = 'none';
+
+  // Toggle nur zurücksetzen wenn explizit gewünscht
+  // (nicht beim View-Wechsel, sonst verliert man den Status)
+  if (resetToggle) {
+    const tog = document.getElementById('auto-log-toggle');
+    if (tog) tog.checked = false;
+  }
+}
+
+function updateCountdownDisplay() {
+  const el = document.getElementById('autolog-countdown');
+  if (el) el.textContent = autoLogCountdown;
+}
+
+// ============================================================
+// LOG EVENTS
+// ============================================================
+function logEvent(name) {
+  if (!getActiveTour()) { showToast('Keine aktive Tour!'); return; }
+  addEntry(makeEntry(name, null));
+  showToast(name + ' geloggt ✓');
+}
+
+function logSonstiges() {
+  const text = document.getElementById('sonstiges-text').value.trim();
+  if (!text) { showToast('Bitte Text eingeben'); return; }
+  addEntry(makeEntry('Sonstiges: ' + text, null));
+  document.getElementById('sonstiges-text').value = '';
+  showToast('Ereignis geloggt ✓');
+}
+
+// Aktuelle GPS-Daten in die manuellen Felder übernehmen
+function fillGPSFields() {
+  if (!gpsCoords) { showToast('Kein GPS-Signal verfügbar'); return; }
+  const c = gpsCoords;
+  document.getElementById('m-lat').value = c.latitude.toFixed(5);
+  document.getElementById('m-lon').value = c.longitude.toFixed(5);
+  if (c.heading != null && !isNaN(c.heading))
+    document.getElementById('m-hdg').value = Math.round(c.heading);
+  if (c.speed != null)
+    document.getElementById('m-spd').value = (c.speed * 1.944).toFixed(1);
+  showToast('GPS-Daten übernommen ✓');
+}
+
+function logManualData() {
+  const lat     = document.getElementById('m-lat').value;
+  const lon     = document.getElementById('m-lon').value;
+  const hdg     = document.getElementById('m-hdg').value;
+  const spd     = document.getElementById('m-spd').value;
+  const temp     = document.getElementById('m-temp').value;
+  const pressure = document.getElementById('m-pressure').value;
+  const wetter   = document.getElementById('m-weather').value;
+  const windBf   = document.getElementById('m-wind-bf').value;
+  const windDir  = document.getElementById('m-wind-dir').value;
+  const waveH    = document.getElementById('m-wave-h').value;
+
+  const m = {};
+  if (lat)      m.latitude         = parseFloat(lat);
+  if (lon)      m.longitude        = parseFloat(lon);
+  if (hdg)      m.heading_deg      = parseFloat(hdg);
+  if (spd)      m.speed_kn         = parseFloat(spd);
+  if (wetter)   m.wetter           = wetter;
+  if (windBf)   m.windstaerke_bft  = parseFloat(windBf);
+  if (windDir)  m.windrichtung_deg = parseFloat(windDir);
+  if (waveH)    m.wellenhoehe_m    = parseFloat(waveH);
+  if (temp)     m.temperatur_c     = parseFloat(temp);
+  if (pressure) m.luftdruck_hpa    = parseFloat(pressure);
+
+  if (!Object.keys(m).length) { showToast('Keine Daten eingegeben'); return; }
+  addEntry(makeEntry('Manuelle Daten', m));
+  showToast('Daten gespeichert ✓');
+}
+
+// ============================================================
+// RENDER: LOGGING VIEW
+// ============================================================
+function renderLoggingView() {
+  const tour = getActiveTour();
+  if (!tour) { showView('list'); return; }
+
+  document.getElementById('log-tour-name').textContent = tour.name;
+  document.getElementById('log-tour-meta').textContent =
+    fmtDate(tour.datum) + (tour.ort ? ' · ' + tour.ort : '');
+  updateBadge();
+
+  // UI-State des Toggles wiederherstellen
+  const tog      = document.getElementById('auto-log-toggle');
+  const statusEl = document.getElementById('autolog-status');
+  const running  = countdownTimer !== null;
+  if (tog) tog.checked = running;
+  if (statusEl) statusEl.style.display = running ? 'block' : 'none';
+  updateCountdownDisplay();
+}
+
+// ============================================================
+// RENDER: TOUR LIST
+// ============================================================
+function renderTourList() {
+  const indicator = document.getElementById('active-indicator');
+  const activeTour = getActiveTour();
+
+  if (activeTourId && activeTour) {
+    indicator.style.display = 'flex';
+    document.getElementById('active-indicator-text').textContent =
+      'Aktiv: ' + activeTour.name + ' (' + activeTour.eintraege.length + ' Einträge)';
+  } else {
+    indicator.style.display = 'none';
+  }
+
+  const container = document.getElementById('tour-list-container');
+  if (!touren.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="anchor">⚓</div>
+        <p>Noch keine Touren vorhanden.<br>Starte jetzt deine erste Tour!</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = touren.map(tour => `
+    <div class="tour-card" onclick="openTourDetail('${tour.id}')">
+      <div class="tour-card-info">
+        <div class="tour-card-name">${esc(tour.name)}</div>
+        <div class="tour-card-meta">
+          ${fmtDate(tour.datum)}${tour.ort ? ' · ' + esc(tour.ort) : ''}
+          &nbsp;·&nbsp; ${tour.status === 'aktiv' ? '🟢 Aktiv' : '✓ Beendet'}
+        </div>
+        <div class="tour-card-entries">${tour.eintraege.length} Einträge</div>
+      </div>
+      <div class="tour-card-arrow">›</div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// RENDER: TOUR DETAIL
+// ============================================================
+function openTourDetail(id) {
+  const tour = touren.find(t => t.id === id);
+  if (!tour) return;
+
+  document.getElementById('detail-title').textContent = tour.name;
+
+  let btns = `<button class="btn btn-outline btn-sm" onclick="exportTourJSON('${id}')">⬇ Export</button>`;
+  if (tour.status === 'aktiv')
+    btns += `<button class="btn btn-primary btn-sm" onclick="showView('logging')">▶ Weiter loggen</button>`;
+  btns += `<button class="btn btn-danger btn-sm" onclick="askDelete('${id}')">🗑 Löschen</button>`;
+  document.getElementById('detail-actions').innerHTML = `<div class="flex-gap">${btns}</div>`;
+
+  const entries = [...tour.eintraege].reverse();
+  const content = document.getElementById('detail-content');
+
+  if (!entries.length) {
+    content.innerHTML = '<p style="color:var(--muted)">Keine Einträge.</p>';
+    showView('detail');
+    return;
+  }
+
+  content.innerHTML = entries.map(e => {
+    const isMob   = e.event && e.event.includes('MOB');
+    const isEvent = e.event && e.event !== 'Auto' && e.event !== 'Manuelle Daten';
+    const cls     = isMob ? 'mob-entry' : isEvent ? 'event-entry' : '';
+
+    let gpsHtml = '';
+    if (e.gps) {
+      const g = e.gps;
+      const rows = [
+        g.latitude    != null ? ['Breite',      g.latitude.toFixed(5) + '°'] : null,
+        g.longitude   != null ? ['Länge',        g.longitude.toFixed(5) + '°'] : null,
+        g.accuracy_m  != null ? ['Genauigkeit',  g.accuracy_m + ' m'] : null,
+        g.speed_kn    != null ? ['Speed',         g.speed_kn + ' kn'] : null,
+        g.heading_deg != null ? ['Kurs',          g.heading_deg + '°'] : null,
+      ].filter(Boolean);
+      if (rows.length) {
+        gpsHtml = '<div class="log-data">' +
+          rows.map(r => `<div>
+            <div class="log-data-label">${r[0]}</div>
+            <div class="log-data-val">${r[1]}</div>
+          </div>`).join('') +
+          '</div>';
+      }
+    }
+    // kein GPS → kein Hinweis, einfach leer lassen
+
+    let manHtml = '';
+    if (e.manuell) {
+      const m = e.manuell;
+      const rows = [
+        m.latitude         != null ? ['Breite (man.)',   parseFloat(m.latitude).toFixed(5) + '°'] : null,
+        m.longitude        != null ? ['Länge (man.)',    parseFloat(m.longitude).toFixed(5) + '°'] : null,
+        m.heading_deg      != null ? ['Kurs (man.)',     m.heading_deg + '°'] : null,
+        m.speed_kn         != null ? ['Speed (man.)',    m.speed_kn + ' kn'] : null,
+        m.wetter           ? ['Wetter',       esc(m.wetter)] : null,
+        m.windstaerke_bft  != null ? ['Wind',            m.windstaerke_bft + ' Bft'] : null,
+        m.windrichtung_deg != null ? ['Windricht.',      m.windrichtung_deg + '°'] : null,
+        m.wellenhoehe_m    != null ? ['Wellen',          m.wellenhoehe_m + ' m'] : null,
+        m.temperatur_c     != null ? ['Temperatur',      m.temperatur_c + ' °C'] : null,
+        m.luftdruck_hpa    != null ? ['Luftdruck',       m.luftdruck_hpa + ' hPa'] : null,
+      ].filter(Boolean);
+      if (rows.length) {
+        manHtml = '<div class="log-data" style="border-top:1px solid rgba(255,255,255,0.08);padding-top:6px;margin-top:6px">' +
+          rows.map(r => `<div>
+            <div class="log-data-label">${r[0]}</div>
+            <div class="log-data-val">${r[1]}</div>
+          </div>`).join('') +
+          '</div>';
+      }
+    }
+
+    return `<div class="log-entry ${cls}">
+      <div class="log-time">${fmtDateTime(e.zeitstempel)}</div>
+      ${e.event ? `<div class="log-event-name">${esc(e.event)}</div>` : ''}
+      ${gpsHtml}${manHtml}
+    </div>`;
+  }).join('');
+
+  showView('detail');
+}
+
+// ============================================================
+// DELETE
+// ============================================================
+function askDelete(id) { deleteTargetId = id; openModal('modal-delete'); }
+
+function confirmDelete() {
+  if (!deleteTargetId) return;
+  if (activeTourId === deleteTargetId) { activeTourId = null; stopAutoLog(); }
+  touren = touren.filter(t => t.id !== deleteTargetId);
+  save();
+  deleteTargetId = null;
+  closeModal('modal-delete');
+  showToast('Tour gelöscht');
+  showView('list');
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o =>
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); })
+);
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function iso() { return new Date().toISOString().slice(0,10); }
+function fmtDate(s) {
+  if (!s) return '–';
+  return new Date(s).toLocaleDateString('de-DE',
+    {day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function fmtDateTime(s) {
+  if (!s) return '–';
+  return new Date(s).toLocaleString('de-DE',
+    {day:'2-digit',month:'2-digit',year:'numeric',
+     hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// ============================================================
+// INIT
+// ============================================================
+load();
+if (activeTourId && !getActiveTour()) activeTourId = null;
+startGPS();
+startClock();
+renderTourList();
+
+// ============================================================
+// SERVICE WORKER REGISTRIERUNG
+// ============================================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        console.log('Service Worker registriert:', reg.scope);
+
+        // Update verfügbar?
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showToast('🔄 Update verfügbar – Seite neu laden!');
+            }
+          });
+        });
+      })
+      .catch(err => console.log('SW Fehler:', err));
+  });
+}
+
+// Online/Offline Indikator
+window.addEventListener('online',  () => showToast('🌐 Online'));
+window.addEventListener('offline', () => showToast('📴 Offline – App läuft weiter'));
+</script>
+</body>
+</html>
