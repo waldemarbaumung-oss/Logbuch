@@ -521,15 +521,15 @@
         <button class="btn btn-event-off" onclick="logEvent('Beiliegen ENDE')">🔁 Beiliegen ENDE</button>
       </div>
       <div class="event-group">
-        <button class="btn btn-event-on"  onclick="logEvent('Ablegen Motor')">🛥 Ablegen Motor</button>
-        <button class="btn btn-event-off" onclick="logEvent('Anlegen Motor')">🛥 Anlegen Motor</button>
+        <button class="btn btn-event-on"  onclick="logEvent('Ablegen')">🛥 ABLEGEN</button>
+        <button class="btn btn-event-off" onclick="logEvent('Anlegen')">🛥 ANLEGEN</button>
       </div>
       <div class="separator"></div>
       <div class="sonstiges-row">
         <input type="text" id="sonstiges-text" placeholder="Sonstiges Ereignis…">
         <button class="btn btn-outline btn-sm" onclick="logSonstiges()">＋ Loggen</button>
       </div>
-      <button class="btn btn-mob btn-full mt12" onclick="logEvent('MOB – Mann über Bord!')">🆘 MOB – MANN ÜBER BORD</button>
+      <button class="btn btn-mob btn-full mt12" onclick="logEvent('POB – Person über Bord!')">🆘 POB – PERSON ÜBER BORD</button>
     </div>
 
     <!-- 2. Automatisches Logging -->
@@ -607,6 +607,7 @@
             <option>Bedeckt</option>
             <option>Regen</option>
             <option>Gewitter</option>
+            <option>Hagel</option>
             <option>Nebel</option>
             <option>Schnee</option>
           </select>
@@ -708,6 +709,8 @@ let autoLogNextAt    = 0;   // absoluter ms-Timestamp des nächsten Eintrags
 let autoLogCountdown = 0;
 
 let deleteTargetId = null;
+let _autoLogRestoreOnLoad = false;  // Auto-Log nach Reload wiederherstellen
+let _autoLogMissedOnLoad  = false;  // verpasster Eintrag beim Reload
 
 // ============================================================
 // KOORDINATEN-HILFSFUNKTIONEN
@@ -791,16 +794,42 @@ document.addEventListener('DOMContentLoaded', () => {
 // PERSISTENCE
 // ============================================================
 function save() {
-  localStorage.setItem('logbuch_touren', JSON.stringify(touren));
-  localStorage.setItem('logbuch_active',  activeTourId || '');
+  localStorage.setItem('logbuch_touren',   JSON.stringify(touren));
+  localStorage.setItem('logbuch_active',   activeTourId || '');
+  // Auto-Log-State persistieren, damit Seiten-Reload den Timer wiederherstellt
+  if (countdownTimer !== null) {
+    localStorage.setItem('logbuch_autolog', JSON.stringify({
+      active:   true,
+      interval: autoLogInterval,
+      nextAt:   autoLogNextAt
+    }));
+  } else {
+    localStorage.removeItem('logbuch_autolog');
+  }
 }
 
 function load() {
   try {
     const t = localStorage.getItem('logbuch_touren');
     const a = localStorage.getItem('logbuch_active');
+    const al = localStorage.getItem('logbuch_autolog');
     if (t) touren       = JSON.parse(t);
     if (a) activeTourId = a || null;
+    if (al) {
+      const s = JSON.parse(al);
+      if (s.active && s.nextAt && s.interval) {
+        autoLogInterval = s.interval;
+        autoLogNextAt   = s.nextAt;
+        // Falls nextAt bereits vergangen: sofort fälligen Eintrag nachschreiben,
+        // dann neues Intervall ab jetzt setzen
+        if (Date.now() >= autoLogNextAt) {
+          // Eintrag wird nach GPS-Init geschrieben (siehe resumeAutoLog)
+          autoLogNextAt = Date.now() + autoLogInterval * 1000;
+          _autoLogMissedOnLoad = true;
+        }
+        _autoLogRestoreOnLoad = true;
+      }
+    }
   } catch(e) { touren = []; activeTourId = null; }
 }
 
@@ -1045,6 +1074,35 @@ function toggleAutoLog() {
   else    stopAutoLog();
 }
 
+// Timer nach Seiten-Reload wiederherstellen (kein Sofort-Eintrag, nextAt aus LocalStorage)
+function resumeAutoLog() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  const statusEl = document.getElementById('autolog-status');
+  if (statusEl) statusEl.style.display = 'block';
+  const tog = document.getElementById('auto-log-toggle');
+  if (tog) tog.checked = true;
+  if (document.getElementById('interval-input'))
+    document.getElementById('interval-input').value = autoLogInterval;
+  updateCountdownDisplay();
+
+  countdownTimer = setInterval(() => {
+    const now = Date.now();
+    autoLogCountdown = Math.max(0, Math.round((autoLogNextAt - now) / 1000));
+    updateCountdownDisplay();
+    if (now >= autoLogNextAt) {
+      if (!gpsCoords || gpsErr) {
+        showToast('⚠ Auto-Log: kein GPS – Eintrag übersprungen');
+      } else {
+        addEntry(makeEntry('Auto', null));
+        showToast('⏱ Auto-Log gespeichert');
+      }
+      autoLogNextAt = Date.now() + autoLogInterval * 1000;
+      save();
+    }
+  }, 1000);
+  save();
+}
+
 function startAutoLog() {
   stopAutoLog(false); // alten stoppen, Toggle NICHT zurücksetzen
   autoLogInterval = parseInt(document.getElementById('interval-input').value) || 60;
@@ -1082,8 +1140,10 @@ function startAutoLog() {
       // Nächsten Zeitpunkt setzen (relativ zu jetzt, nicht zum Soll-Zeitpunkt,
       // damit nach langer Pause nicht viele Einträge auf einmal kommen)
       autoLogNextAt = Date.now() + autoLogInterval * 1000;
+      save();
     }
   }, 1000);
+  save();
 }
 
 function stopAutoLog(resetToggle = true) {
@@ -1269,7 +1329,7 @@ function openTourDetail(id) {
   }
 
   content.innerHTML = entries.map(e => {
-    const isMob    = e.event && e.event.includes('MOB');
+    const isMob    = e.event && e.event.includes('POB');
     const isManual = e.event === 'Manuelle Daten';
     const isEvent  = e.event && !isManual && e.event !== 'Auto';
     const cls      = isMob ? 'mob-entry' : isManual ? 'manual-entry' : isEvent ? 'event-entry' : '';
@@ -1394,6 +1454,24 @@ if (activeTourId && !getActiveTour()) activeTourId = null;
 startGPS();
 startClock();
 renderTourList();
+// Auto-Log nach Reload wiederherstellen
+// GPS braucht etwas Zeit – wir warten kurz, dann starten wir den Timer
+if (_autoLogRestoreOnLoad && activeTourId) {
+  setTimeout(() => {
+    if (_autoLogMissedOnLoad) {
+      // Verpassten Eintrag schreiben sobald GPS bereit (max. 5s warten)
+      const tryMissed = setInterval(() => {
+        if (gpsCoords && !gpsErr) {
+          addEntry(makeEntry('Auto', null));
+          showToast('⏱ Auto-Log: verpasster Eintrag nachgeholt');
+          clearInterval(tryMissed);
+        }
+      }, 500);
+      setTimeout(() => clearInterval(tryMissed), 5000);
+    }
+    resumeAutoLog();
+  }, 300);
+}
 
 // ============================================================
 // SERVICE WORKER REGISTRIERUNG
