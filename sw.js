@@ -4,7 +4,7 @@
 // Danach funktioniert die App komplett offline.
 // Version hochzählen um Cache zu invalidieren nach Updates.
 // ============================================================
-const CACHE_NAME = 'logbuch-v4';
+const CACHE_NAME = 'logbuch-v5';
 const FILES = [
   './',
   './index.html',
