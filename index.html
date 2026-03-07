@@ -472,7 +472,7 @@
     <div id="tour-list-header">
       <h2>Meine Touren</h2>
       <div class="flex-gap">
-        <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ Export</button>
+        <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ GPX</button>
         <button class="btn btn-gold btn-sm" id="btn-neue-tour" onclick="openNewTourModal()">＋ Neue Tour</button>
       </div>
     </div>
@@ -833,22 +833,182 @@ function load() {
   } catch(e) { touren = []; activeTourId = null; }
 }
 
+// ============================================================
+// GPX EXPORT
+// Standard: GPX 1.1  (https://www.topografix.com/gpx.asp)
+// GPS-Positionen → <trkpt> im Track
+// Events/Wegpunkte → <wpt>
+// Alle Zusatzdaten → <extensions> mit Namespace "logbuch:"
+// ============================================================
+function xmlEsc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&apos;');
+}
+
+function buildGPX(tour) {
+  const created = new Date(tour.datum).toISOString();
+  const tourName = xmlEsc(tour.name);
+  const tourOrt  = xmlEsc(tour.ort || '');
+
+  // Wegpunkte: alle Einträge MIT GPS-Koordinaten UND einem Event-Namen
+  // (Auto-Positionen kommen in den Track, benannte Events als Waypoints)
+  const wpts = [];
+  // Track-Punkte: alle Einträge mit GPS-Koordinaten
+  const trkpts = [];
+
+  for (const e of tour.eintraege) {
+    const gps = e.gps;
+    const hasGPS = gps && gps.latitude != null && gps.longitude != null;
+    const time = e.zeitstempel;
+
+    // Zusatzdaten als Extension-Block
+    const extParts = [];
+    if (e.event) extParts.push(`<logbuch:event>${xmlEsc(e.event)}</logbuch:event>`);
+    if (e.manuell) {
+      const m = e.manuell;
+      if (m.wetter)           extParts.push(`<logbuch:wetter>${xmlEsc(m.wetter)}</logbuch:wetter>`);
+      if (m.windstaerke_bft  != null) extParts.push(`<logbuch:wind_bft>${m.windstaerke_bft}</logbuch:wind_bft>`);
+      if (m.windrichtung_deg != null) extParts.push(`<logbuch:wind_dir_deg>${m.windrichtung_deg}</logbuch:wind_dir_deg>`);
+      if (m.wellenhoehe_m    != null) extParts.push(`<logbuch:wellenhoehe_m>${m.wellenhoehe_m}</logbuch:wellenhoehe_m>`);
+      if (m.temperatur_c     != null) extParts.push(`<logbuch:temperatur_c>${m.temperatur_c}</logbuch:temperatur_c>`);
+      if (m.luftdruck_hpa    != null) extParts.push(`<logbuch:luftdruck_hpa>${m.luftdruck_hpa}</logbuch:luftdruck_hpa>`);
+      if (m.heading_deg      != null) extParts.push(`<logbuch:kurs_deg>${m.heading_deg}</logbuch:kurs_deg>`);
+      if (m.speed_kn         != null) extParts.push(`<logbuch:speed_kn>${m.speed_kn}</logbuch:speed_kn>`);
+      // Manuelle Koordinaten als Extension (wenn abweichend von GPS)
+      if (m.lat_str)  extParts.push(`<logbuch:man_lat>${xmlEsc(m.lat_str)}</logbuch:man_lat>`);
+      if (m.lon_str)  extParts.push(`<logbuch:man_lon>${xmlEsc(m.lon_str)}</logbuch:man_lon>`);
+    }
+    if (gps) {
+      if (gps.accuracy_m  != null) extParts.push(`<logbuch:accuracy_m>${gps.accuracy_m}</logbuch:accuracy_m>`);
+      if (gps.speed_kn    != null) extParts.push(`<logbuch:speed_kn>${gps.speed_kn}</logbuch:speed_kn>`);
+      if (gps.heading_deg != null) extParts.push(`<logbuch:kurs_deg>${gps.heading_deg}</logbuch:kurs_deg>`);
+      if (gps.lat_str)             extParts.push(`<logbuch:lat_fmt>${xmlEsc(gps.lat_str)}</logbuch:lat_fmt>`);
+      if (gps.lon_str)             extParts.push(`<logbuch:lon_fmt>${xmlEsc(gps.lon_str)}</logbuch:lon_fmt>`);
+    }
+    const extBlock = extParts.length
+      ? `\n        <extensions>\n          ${extParts.join('\n          ')}\n        </extensions>`
+      : '';
+
+    if (hasGPS) {
+      const lat = gps.latitude.toFixed(7);
+      const lon = gps.longitude.toFixed(7);
+
+      // Trkpt (alle GPS-Positionen in den Track)
+      trkpts.push(
+        `      <trkpt lat="${lat}" lon="${lon}">` +
+        `\n        <time>${time}</time>` +
+        (e.event ? `\n        <name>${xmlEsc(e.event)}</name>` : '') +
+        (gps.speed_ms != null ? `\n        <speed>${gps.speed_ms.toFixed(3)}</speed>` : '') +
+        (gps.heading_deg != null ? `\n        <course>${gps.heading_deg}</course>` : '') +
+        extBlock +
+        `\n      </trkpt>`
+      );
+
+      // Benannte Events (nicht "Auto") zusätzlich als Waypoint
+      if (e.event && e.event !== 'Auto') {
+        wpts.push(
+          `  <wpt lat="${lat}" lon="${lon}">` +
+          `\n    <time>${time}</time>` +
+          `\n    <name>${xmlEsc(e.event)}</name>` +
+          extBlock.replace(/\n {6}/g, '\n    ').replace(/\n {8}/g, '\n      ') +
+          `\n  </wpt>`
+        );
+      }
+    } else {
+      // Eintrag ohne GPS: als Waypoint mit letzter bekannter Position oder
+      // nur in Extensions (kein <trkpt> ohne Koordinaten möglich)
+      if (e.event && extParts.length) {
+        // Wegpunkt ohne Koordinaten: GPX erlaubt das nicht → Extension-only Waypoint
+        // Wir setzen lat/lon=0/0 und markieren als "no_gps"
+        extParts.push('<logbuch:no_gps>true</logbuch:no_gps>');
+        const extBlockNoGPS = `\n    <extensions>\n      ${extParts.join('\n      ')}\n    </extensions>`;
+        wpts.push(
+          `  <wpt lat="0.0000000" lon="0.0000000">` +
+          `\n    <time>${time}</time>` +
+          `\n    <name>${xmlEsc(e.event)}</name>` +
+          extBlockNoGPS +
+          `\n  </wpt>`
+        );
+      }
+    }
+  }
+
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1"
+  creator="Schiffslogbuch-App"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:logbuch="https://schiffslogbuch/ext/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${tourName}</name>
+    <desc>${tourOrt}</desc>
+    <time>${created}</time>
+    <keywords>Schiffslogbuch, ${tourName}</keywords>
+  </metadata>
+${wpts.join('\n')}
+  <trk>
+    <name>${tourName}</name>
+    <desc>Tour vom ${new Date(tour.datum).toLocaleDateString('de-DE')}</desc>
+    <type>boat</type>
+    <trkseg>
+${trkpts.join('\n')}
+    </trkseg>
+  </trk>
+</gpx>`;
+  return gpx;
+}
+
 function exportJSON() {
-  dl(JSON.stringify(touren, null, 2), `logbuch_${iso()}.json`);
-  showToast('Alle Touren exportiert ✓');
+  // Alle Touren: eine GPX-Datei pro Tour als ZIP wäre ideal,
+  // aber ohne externe Lib exportieren wir alle Touren als eine kombinierte GPX
+  if (!touren.length) { showToast('Keine Touren vorhanden'); return; }
+  if (touren.length === 1) {
+    const gpx = buildGPX(touren[0]);
+    const fn = `logbuch_${iso()}.gpx`;
+    dl(gpx, fn, 'application/gpx+xml');
+    showToast('Export als GPX ✓');
+    return;
+  }
+  // Mehrere Touren: kombinierte GPX mit je einem <trk> pro Tour
+  const allTrks = touren.map(tour => {
+    const trkpts = tour.eintraege
+      .filter(e => e.gps && e.gps.latitude != null)
+      .map(e => {
+        const g = e.gps;
+        return `      <trkpt lat="${g.latitude.toFixed(7)}" lon="${g.longitude.toFixed(7)}">\n        <time>${e.zeitstempel}</time>\n        <name>${xmlEsc(e.event || '')}</name>\n      </trkpt>`;
+      });
+    return `  <trk>\n    <name>${xmlEsc(tour.name)}</name>\n    <trkseg>\n${trkpts.join('\n')}\n    </trkseg>\n  </trk>`;
+  }).join('\n');
+
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Schiffslogbuch-App"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:logbuch="https://schiffslogbuch/ext/1">
+  <metadata><name>Alle Touren – Logbuch-Export</name><time>${new Date().toISOString()}</time></metadata>
+${allTrks}
+</gpx>`;
+  dl(gpx, `logbuch_alle_touren_${iso()}.gpx`, 'application/gpx+xml');
+  showToast('Alle Touren als GPX exportiert ✓');
 }
 
 function exportTourJSON(id) {
   const tour = touren.find(t => t.id === id);
   if (!tour) return;
-  dl(JSON.stringify(tour, null, 2),
-    `tour_${tour.name.replace(/\s+/g,'_')}_${tour.datum.slice(0,10)}.json`);
-  showToast('Tour exportiert ✓');
+  const gpx = buildGPX(tour);
+  const fn = `tour_${tour.name.replace(/\s+/g,'_')}_${tour.datum.slice(0,10)}.gpx`;
+  dl(gpx, fn, 'application/gpx+xml');
+  showToast('Tour als GPX exportiert ✓');
 }
 
-function dl(text, filename) {
+function dl(text, filename, mime) {
+  mime = mime || 'application/json';
   const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(new Blob([text], {type:'application/json'})),
+    href: URL.createObjectURL(new Blob([text], {type: mime})),
     download: filename
   });
   a.click();
@@ -1313,7 +1473,7 @@ function openTourDetail(id) {
 
   document.getElementById('detail-title').textContent = tour.name;
 
-  let btns = `<button class="btn btn-outline btn-sm" onclick="exportTourJSON('${id}')">⬇ Export</button>`;
+  let btns = `<button class="btn btn-outline btn-sm" onclick="exportTourJSON('${id}')">⬇ GPX</button>`;
   if (tour.status === 'aktiv')
     btns += `<button class="btn btn-primary btn-sm" onclick="showView('logging')">▶ Weiter loggen</button>`;
   btns += `<button class="btn btn-danger btn-sm" onclick="askDelete('${id}')">🗑 Löschen</button>`;
