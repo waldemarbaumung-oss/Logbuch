@@ -561,6 +561,7 @@
             <option>Bedeckt</option>
             <option>Regen</option>
             <option>Gewitter</option>
+            <option>Hagel</option>
             <option>Nebel</option>
             <option>Schnee</option>
           </select>
@@ -657,7 +658,7 @@ let gpsWatchId   = null;
 
 // Auto-Log – Timer lebt global, unabhängig von Views
 let countdownTimer   = null;
-let autoLogInterval  = 60;
+let autoLogInterval  = 3600;
 let autoLogNextAt    = 0;   // absoluter ms-Timestamp des nächsten Eintrags
 let autoLogCountdown = 0;
 
