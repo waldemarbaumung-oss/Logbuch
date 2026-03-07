@@ -184,10 +184,12 @@
     -webkit-tap-highlight-color: transparent;
   }
   .btn:active { transform: scale(0.95); opacity: 0.82; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
   .btn-primary { background: var(--lightblue); color: #fff; }
   .btn-gold    { background: var(--gold);      color: #08111f; }
   .btn-danger  { background: var(--red);       color: #fff; }
+  .btn-success  { background: var(--green);     color: #08111f; }
   .btn-outline { background: transparent; border: 2px solid var(--gold); color: var(--gold); }
   .btn-sm  { padding: 8px 13px; font-size: 0.84rem; }
   .btn-lg  { padding: 14px 20px; font-size: 1rem; }
@@ -255,6 +257,7 @@
   #autolog-status {
     font-size: 0.84rem; color: var(--green);
     margin-top: 8px; display: none;
+    font-variant-numeric: tabular-nums;
   }
 
   /* ===== FORM ===== */
@@ -276,6 +279,34 @@
   select:focus, input:focus { outline: none; border-color: var(--cyan); }
   select option { background: var(--navy2); }
 
+
+  /* Koordinaten-Input */
+  .coord-group { display: flex; flex-direction: column; gap: 4px; }
+  .coord-group label { font-size: 0.76rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .coord-inputs {
+    display: grid;
+    grid-template-columns: 2rem 1fr 1fr;
+    gap: 4px;
+    align-items: center;
+  }
+  .coord-hemi {
+    background: rgba(0,212,255,0.12);
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 6px;
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 9px 2px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .coord-hemi:active { background: rgba(0,212,255,0.28); }
+  .coord-preview { font-size: 0.75rem; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .gps-btn-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .gps-btn-row span { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .gps-btn-row .btns { display: flex; gap: 6px; }
   /* ===== EVENT BUTTONS ===== */
   .event-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
   .event-group .btn { font-size: 0.88rem; padding: 11px 8px; }
@@ -305,7 +336,9 @@
     padding: 10px 13px;
     margin-bottom: 8px;
   }
-  .log-entry.event-entry { border-left-color: var(--gold); }
+  .log-entry.event-entry  { border-left-color: var(--gold); }
+  .log-entry.manual-entry { border-left-color: var(--green); }
+  .log-entry.manual-entry .log-event-name { color: #80ffb8; }
   .log-entry.mob-entry   { border-left-color: var(--red); background: rgba(255,59,59,0.1); }
 
   .log-time { font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
@@ -440,7 +473,7 @@
       <h2>Meine Touren</h2>
       <div class="flex-gap">
         <button class="btn btn-outline btn-sm" onclick="exportJSON()">⬇ Export</button>
-        <button class="btn btn-gold btn-sm" onclick="openNewTourModal()">＋ Neue Tour</button>
+        <button class="btn btn-gold btn-sm" id="btn-neue-tour" onclick="openNewTourModal()">＋ Neue Tour</button>
       </div>
     </div>
 
@@ -488,8 +521,8 @@
         <button class="btn btn-event-off" onclick="logEvent('Beiliegen ENDE')">🔁 Beiliegen ENDE</button>
       </div>
       <div class="event-group">
-        <button class="btn btn-event-on"  onclick="logEvent('Ablegen')">🛥 Ablegen</button>
-        <button class="btn btn-event-off" onclick="logEvent('Anlegen')">🛥 Anlegen</button>
+        <button class="btn btn-event-on"  onclick="logEvent('Ablegen Motor')">🛥 Ablegen Motor</button>
+        <button class="btn btn-event-off" onclick="logEvent('Anlegen Motor')">🛥 Anlegen Motor</button>
       </div>
       <div class="separator"></div>
       <div class="sonstiges-row">
@@ -501,7 +534,7 @@
 
     <!-- 2. Automatisches Logging -->
     <div class="section">
-      <div class="section-title">⏱ Automatisch Position loggen</div>
+      <div class="section-title">⏱ Automatisches Logging</div>
       <div class="toggle-row">
         <span class="toggle-label">Auto-Log aktiv</span>
         <label class="toggle">
@@ -514,27 +547,40 @@
         <input type="number" id="interval-input" value="60" min="5" max="3600">
         <span>Sekunden</span>
       </div>
-      <div id="autolog-status">● Läuft – nächster Eintrag in <span id="autolog-countdown">–</span> s</div>
+      <div id="autolog-status">● Läuft – nächster Eintrag in <span id="autolog-countdown">00:00:00</span></div>
     </div>
 
     <!-- 3. Manuelle Daten -->
     <div class="section">
       <div class="section-title">📋 Manuelle Daten</div>
 
-      <!-- GPS-Felder -->
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-        <span style="font-size:0.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">GPS-Position</span>
-        <button class="btn btn-sm" style="background:rgba(0,212,255,0.15);border:1px solid var(--cyan);color:var(--cyan);padding:5px 10px;font-size:0.78rem;" onclick="fillGPSFields()">📡 GPS übernehmen</button>
+      <!-- GPS-Buttons -->
+      <div class="gps-btn-row">
+        <span>GPS-Position</span>
+        <div class="btns">
+          <button class="btn btn-sm" style="background:rgba(0,212,255,0.15);border:1px solid var(--cyan);color:var(--cyan);padding:5px 10px;font-size:0.78rem;" onclick="fillGPSFields()">📡 GPS übernehmen</button>
+          <button class="btn btn-sm" style="background:rgba(0,230,118,0.15);border:1px solid var(--green);color:var(--green);padding:5px 10px;font-size:0.78rem;" onclick="logGPSNow()">📍 GPS loggen</button>
+        </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Breite (°)</label>
-          <input type="number" id="m-lat" placeholder="z.B. 37.76416" step="0.00001">
+      <!-- Breite -->
+      <div class="coord-group" style="margin-bottom:8px">
+        <label>Breite</label>
+        <div class="coord-inputs">
+          <div class="coord-hemi" id="lat-hemi" onclick="toggleHemi('lat')">N</div>
+          <input type="number" id="m-lat-deg" placeholder="Grad" min="0" max="90" step="1">
+          <input type="number" id="m-lat-min" placeholder="Min (z.B. 25.230)" min="0" max="59.999" step="0.001">
         </div>
-        <div class="form-group">
-          <label>Länge (°)</label>
-          <input type="number" id="m-lon" placeholder="z.B. 23.82358" step="0.00001">
+        <div class="coord-preview" id="lat-preview">–</div>
+      </div>
+      <!-- Länge -->
+      <div class="coord-group" style="margin-bottom:8px">
+        <label>Länge</label>
+        <div class="coord-inputs">
+          <div class="coord-hemi" id="lon-hemi" onclick="toggleHemi('lon')">E</div>
+          <input type="number" id="m-lon-deg" placeholder="Grad" min="0" max="180" step="1">
+          <input type="number" id="m-lon-min" placeholder="Min (z.B. 12.230)" min="0" max="59.999" step="0.001">
         </div>
+        <div class="coord-preview" id="lon-preview">–</div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -561,7 +607,6 @@
             <option>Bedeckt</option>
             <option>Regen</option>
             <option>Gewitter</option>
-            <option>Hagel</option>
             <option>Nebel</option>
             <option>Schnee</option>
           </select>
@@ -591,7 +636,7 @@
           <input type="number" id="m-pressure" placeholder="z.B. 1013" step="0.1" min="800" max="1100">
         </div>
       </div>
-      <button class="btn btn-primary btn-sm mt8" onclick="logManualData()">💾 Daten speichern</button>
+      <button class="btn btn-success btn-sm mt8 btn-full" onclick="logManualData()">💾 Manuelle Daten speichern</button>
     </div>
 
     <!-- 4. Tour beenden -->
@@ -658,11 +703,89 @@ let gpsWatchId   = null;
 
 // Auto-Log – Timer lebt global, unabhängig von Views
 let countdownTimer   = null;
-let autoLogInterval  = 3600;
+let autoLogInterval  = 60;
 let autoLogNextAt    = 0;   // absoluter ms-Timestamp des nächsten Eintrags
 let autoLogCountdown = 0;
 
 let deleteTargetId = null;
+
+// ============================================================
+// KOORDINATEN-HILFSFUNKTIONEN
+// Internes Format: Dezimalgrad; Anzeige: "N 51°25,230'"
+// ============================================================
+function decToNMEA(decDeg, isLat) {
+  const hemi = isLat ? (decDeg >= 0 ? 'N' : 'S') : (decDeg >= 0 ? 'E' : 'W');
+  const abs  = Math.abs(decDeg);
+  const deg  = Math.floor(abs);
+  const min  = (abs - deg) * 60;
+  return { hemi, deg, min };
+}
+function decToStr(decDeg, isLat) {
+  const { hemi, deg, min } = decToNMEA(decDeg, isLat);
+  return hemi + ' ' + deg + '°' + min.toFixed(3).replace('.',',') + '′';
+}
+function nmeaToDec(hemi, deg, min) {
+  const sign = (hemi === 'S' || hemi === 'W') ? -1 : 1;
+  return sign * (parseFloat(deg || 0) + parseFloat(min || 0) / 60);
+}
+function fillCoordFields(decLat, decLon) {
+  const lat = decToNMEA(decLat, true);
+  const lon = decToNMEA(decLon, false);
+  document.getElementById('lat-hemi').textContent = lat.hemi;
+  document.getElementById('m-lat-deg').value = lat.deg;
+  document.getElementById('m-lat-min').value = lat.min.toFixed(3);
+  document.getElementById('lon-hemi').textContent = lon.hemi;
+  document.getElementById('m-lon-deg').value = lon.deg;
+  document.getElementById('m-lon-min').value = lon.min.toFixed(3);
+  updateCoordPreview();
+}
+function updateCoordPreview() {
+  const latHemi = document.getElementById('lat-hemi').textContent;
+  const latDeg  = document.getElementById('m-lat-deg').value;
+  const latMin  = document.getElementById('m-lat-min').value;
+  const lonHemi = document.getElementById('lon-hemi').textContent;
+  const lonDeg  = document.getElementById('m-lon-deg').value;
+  const lonMin  = document.getElementById('m-lon-min').value;
+  const lp = document.getElementById('lat-preview');
+  const op = document.getElementById('lon-preview');
+  if (latDeg !== '' && latMin !== '') {
+    lp.textContent = '= ' + nmeaToDec(latHemi, latDeg, latMin).toFixed(5) + '°';
+  } else { lp.textContent = '–'; }
+  if (lonDeg !== '' && lonMin !== '') {
+    op.textContent = '= ' + nmeaToDec(lonHemi, lonDeg, lonMin).toFixed(5) + '°';
+  } else { op.textContent = '–'; }
+}
+function toggleHemi(axis) {
+  const el = document.getElementById(axis + '-hemi');
+  if (axis === 'lat') el.textContent = el.textContent === 'N' ? 'S' : 'N';
+  else                el.textContent = el.textContent === 'E' ? 'W' : 'E';
+  updateCoordPreview();
+}
+function readCoordFields() {
+  const latHemi = document.getElementById('lat-hemi').textContent;
+  const latDeg  = document.getElementById('m-lat-deg').value;
+  const latMin  = document.getElementById('m-lat-min').value;
+  const lonHemi = document.getElementById('lon-hemi').textContent;
+  const lonDeg  = document.getElementById('m-lon-deg').value;
+  const lonMin  = document.getElementById('m-lon-min').value;
+  const hasLat  = latDeg !== '' && latMin !== '';
+  const hasLon  = lonDeg !== '' && lonMin !== '';
+  if (!hasLat && !hasLon) return { lat: null, lon: null };
+  const minFmt = v => parseFloat(v).toFixed(3).replace('.', ',');
+  return {
+    lat:    hasLat ? nmeaToDec(latHemi, latDeg, latMin) : null,
+    lon:    hasLon ? nmeaToDec(lonHemi, lonDeg, lonMin) : null,
+    latStr: hasLat ? (latHemi+' '+latDeg+'°'+minFmt(latMin)+'′') : null,
+    lonStr: hasLon ? (lonHemi+' '+lonDeg+'°'+minFmt(lonMin)+'′') : null,
+  };
+}
+// Live-Vorschau bei Eingabe (Event-Listener nach DOM-Aufbau)
+document.addEventListener('DOMContentLoaded', () => {
+  ['m-lat-deg','m-lat-min','m-lon-deg','m-lon-min'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateCoordPreview);
+  });
+});
 
 // ============================================================
 // PERSISTENCE
@@ -754,8 +877,8 @@ function updateGPSHeader() {
   }
   const c = gpsCoords;
 
-  setGPS('hdr-lat', c.latitude.toFixed(5)  + '°');
-  setGPS('hdr-lon', c.longitude.toFixed(5) + '°');
+  setGPS('hdr-lat', decToStr(c.latitude, true));
+  setGPS('hdr-lon', decToStr(c.longitude, false));
 
   // Kurs: nur verfügbar wenn Gerät sich bewegt (speed > ~0.3 m/s)
   // heading ist null oder NaN wenn stehend
@@ -794,11 +917,13 @@ function setGPS(id, val, cls) {
 }
 
 function snapshotGPS() {
-  if (!gpsCoords) return null;   // kein GPS → null, kein Fehlertext im Log
+  if (!gpsCoords) return null;
   const c = gpsCoords;
   return {
     latitude:    c.latitude,
     longitude:   c.longitude,
+    lat_str:     decToStr(c.latitude, true),
+    lon_str:     decToStr(c.longitude, false),
     accuracy_m:  c.accuracy  != null ? parseFloat(c.accuracy.toFixed(1))          : null,
     heading_deg: (c.heading !== null && !isNaN(c.heading)) ? Math.round(c.heading) : null,
     speed_ms:    c.speed     != null ? parseFloat(c.speed.toFixed(3))              : null,
@@ -831,6 +956,10 @@ function showView(name) {
 // TOUR
 // ============================================================
 function openNewTourModal() {
+  if (activeTourId && getActiveTour()) {
+    showToast('Bitte zuerst die aktive Tour beenden!');
+    return;
+  }
   document.getElementById('new-tour-name').value  = '';
   document.getElementById('new-tour-place').value = '';
   openModal('modal-new-tour');
@@ -920,7 +1049,14 @@ function startAutoLog() {
   stopAutoLog(false); // alten stoppen, Toggle NICHT zurücksetzen
   autoLogInterval = parseInt(document.getElementById('interval-input').value) || 60;
 
-  // Nächsten Fälligkeitszeitpunkt als absoluten ms-Timestamp speichern
+  // Sofort ersten Eintrag speichern
+  if (!gpsCoords || gpsErr) {
+    showToast('⚠ Auto-Log: kein GPS – erster Eintrag übersprungen');
+  } else {
+    addEntry(makeEntry('Auto', null));
+    showToast('⏱ Auto-Log gestartet – erster Eintrag gespeichert');
+  }
+
   autoLogNextAt = Date.now() + autoLogInterval * 1000;
 
   const statusEl = document.getElementById('autolog-status');
@@ -965,9 +1101,15 @@ function stopAutoLog(resetToggle = true) {
   }
 }
 
+function fmtCountdown(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+}
 function updateCountdownDisplay() {
   const el = document.getElementById('autolog-countdown');
-  if (el) el.textContent = autoLogCountdown;
+  if (el) el.textContent = fmtCountdown(autoLogCountdown);
 }
 
 // ============================================================
@@ -991,8 +1133,7 @@ function logSonstiges() {
 function fillGPSFields() {
   if (!gpsCoords) { showToast('Kein GPS-Signal verfügbar'); return; }
   const c = gpsCoords;
-  document.getElementById('m-lat').value = c.latitude.toFixed(5);
-  document.getElementById('m-lon').value = c.longitude.toFixed(5);
+  fillCoordFields(c.latitude, c.longitude);
   if (c.heading != null && !isNaN(c.heading))
     document.getElementById('m-hdg').value = Math.round(c.heading);
   if (c.speed != null)
@@ -1000,11 +1141,17 @@ function fillGPSFields() {
   showToast('GPS-Daten übernommen ✓');
 }
 
+function logGPSNow() {
+  if (!getActiveTour()) { showToast('Keine aktive Tour!'); return; }
+  if (!gpsCoords || gpsErr) { showToast('Kein GPS-Signal verfügbar'); return; }
+  addEntry(makeEntry('GPS-Position', null));
+  showToast('GPS-Position geloggt ✓');
+}
+
 function logManualData() {
-  const lat     = document.getElementById('m-lat').value;
-  const lon     = document.getElementById('m-lon').value;
-  const hdg     = document.getElementById('m-hdg').value;
-  const spd     = document.getElementById('m-spd').value;
+  const coords   = readCoordFields();
+  const hdg      = document.getElementById('m-hdg').value;
+  const spd      = document.getElementById('m-spd').value;
   const temp     = document.getElementById('m-temp').value;
   const pressure = document.getElementById('m-pressure').value;
   const wetter   = document.getElementById('m-weather').value;
@@ -1013,8 +1160,8 @@ function logManualData() {
   const waveH    = document.getElementById('m-wave-h').value;
 
   const m = {};
-  if (lat)      m.latitude         = parseFloat(lat);
-  if (lon)      m.longitude        = parseFloat(lon);
+  if (coords.lat != null) { m.latitude = coords.lat; m.lat_str = coords.latStr; }
+  if (coords.lon != null) { m.longitude = coords.lon; m.lon_str = coords.lonStr; }
   if (hdg)      m.heading_deg      = parseFloat(hdg);
   if (spd)      m.speed_kn         = parseFloat(spd);
   if (wetter)   m.wetter           = wetter;
@@ -1063,6 +1210,13 @@ function renderTourList() {
       'Aktiv: ' + activeTour.name + ' (' + activeTour.eintraege.length + ' Einträge)';
   } else {
     indicator.style.display = 'none';
+  }
+
+  const btnNeu = document.getElementById('btn-neue-tour');
+  if (activeTourId && activeTour) {
+    if (btnNeu) { btnNeu.disabled = true; btnNeu.title = 'Bitte zuerst aktive Tour beenden'; }
+  } else {
+    if (btnNeu) { btnNeu.disabled = false; btnNeu.title = ''; }
   }
 
   const container = document.getElementById('tour-list-container');
@@ -1115,18 +1269,19 @@ function openTourDetail(id) {
   }
 
   content.innerHTML = entries.map(e => {
-    const isMob   = e.event && e.event.includes('MOB');
-    const isEvent = e.event && e.event !== 'Auto' && e.event !== 'Manuelle Daten';
-    const cls     = isMob ? 'mob-entry' : isEvent ? 'event-entry' : '';
+    const isMob    = e.event && e.event.includes('MOB');
+    const isManual = e.event === 'Manuelle Daten';
+    const isEvent  = e.event && !isManual && e.event !== 'Auto';
+    const cls      = isMob ? 'mob-entry' : isManual ? 'manual-entry' : isEvent ? 'event-entry' : '';
 
     let gpsHtml = '';
     if (e.gps) {
       const g = e.gps;
       const rows = [
-        g.latitude    != null ? ['Breite',      g.latitude.toFixed(5) + '°'] : null,
-        g.longitude   != null ? ['Länge',        g.longitude.toFixed(5) + '°'] : null,
-        g.accuracy_m  != null ? ['Genauigkeit',  g.accuracy_m + ' m'] : null,
-        g.speed_kn    != null ? ['Speed',         g.speed_kn + ' kn'] : null,
+        g.lat_str     ? ['Breite',      esc(g.lat_str)] : (g.latitude  != null ? ['Breite',  g.latitude.toFixed(5)+'°']  : null),
+        g.lon_str     ? ['Länge',       esc(g.lon_str)] : (g.longitude != null ? ['Länge',   g.longitude.toFixed(5)+'°'] : null),
+        g.accuracy_m  != null ? ['Genauigkeit', g.accuracy_m + ' m'] : null,
+        g.speed_kn    != null ? ['Speed',        g.speed_kn + ' kn'] : null,
         g.heading_deg != null ? ['Kurs',          g.heading_deg + '°'] : null,
       ].filter(Boolean);
       if (rows.length) {
@@ -1144,8 +1299,8 @@ function openTourDetail(id) {
     if (e.manuell) {
       const m = e.manuell;
       const rows = [
-        m.latitude         != null ? ['Breite (man.)',   parseFloat(m.latitude).toFixed(5) + '°'] : null,
-        m.longitude        != null ? ['Länge (man.)',    parseFloat(m.longitude).toFixed(5) + '°'] : null,
+        m.lat_str          ? ['Breite (man.)',  esc(m.lat_str)]  : (m.latitude  != null ? ['Breite (man.)',  parseFloat(m.latitude).toFixed(5)+'°']  : null),
+        m.lon_str          ? ['Länge (man.)',   esc(m.lon_str)]  : (m.longitude != null ? ['Länge (man.)',   parseFloat(m.longitude).toFixed(5)+'°'] : null),
         m.heading_deg      != null ? ['Kurs (man.)',     m.heading_deg + '°'] : null,
         m.speed_kn         != null ? ['Speed (man.)',    m.speed_kn + ' kn'] : null,
         m.wetter           ? ['Wetter',       esc(m.wetter)] : null,
