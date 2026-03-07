@@ -849,6 +849,29 @@ function xmlEsc(s) {
     .replace(/'/g,'&apos;');
 }
 
+// Symbol-Name für Logbuch-Event → Garmin GPX <sym>
+function eventSym(event) {
+  if (!event) return 'Waypoint';
+  if (event === 'Tour START')                return 'Flag, Green';
+  if (event === 'Tour ENDE')                 return 'Flag, Red';
+  if (event === 'Motor AN')                  return 'Waypoint';
+  if (event === 'Motor AUS')                 return 'Waypoint';
+  if (event === 'Segel HOCH')                return 'Dot, White';
+  if (event === 'Segel RUNTER')              return 'Dot, White';
+  if (event === 'Anker HOCH')                return 'Anchor';
+  if (event === 'Anker RUNTER')              return 'Anchor';
+  if (event === 'Ablegen')                   return 'Square, Blue';
+  if (event === 'Anlegen')                   return 'Square, Blue';
+  if (event.startsWith('Beiliegen'))         return 'Square, Green';
+  if (event === 'Auto')                      return 'Pin, Blue';
+  if (event === 'GPS-Position')              return 'Pin, Blue';
+  if (event === 'Manuelle Daten')            return 'Waypoint, Flag';
+  if (event.startsWith('POB'))              return 'Man Overboard';
+  if (event.startsWith('Sonstiges'))        return 'Pin, Yellow';
+  return 'Waypoint';
+}
+
+
 function buildGPX(tour) {
   const created = new Date(tour.datum).toISOString();
   const tourName = xmlEsc(tour.name);
@@ -902,6 +925,7 @@ function buildGPX(tour) {
         `      <trkpt lat="${lat}" lon="${lon}">` +
         `\n        <time>${time}</time>` +
         (e.event ? `\n        <name>${xmlEsc(e.event)}</name>` : '') +
+        `\n        <sym>${xmlEsc(eventSym(e.event))}</sym>` +
         (gps.speed_ms != null ? `\n        <speed>${gps.speed_ms.toFixed(3)}</speed>` : '') +
         (gps.heading_deg != null ? `\n        <course>${gps.heading_deg}</course>` : '') +
         extBlock +
@@ -914,6 +938,7 @@ function buildGPX(tour) {
           `  <wpt lat="${lat}" lon="${lon}">` +
           `\n    <time>${time}</time>` +
           `\n    <name>${xmlEsc(e.event)}</name>` +
+          `\n    <sym>${xmlEsc(eventSym(e.event))}</sym>` +
           extBlock.replace(/\n {6}/g, '\n    ').replace(/\n {8}/g, '\n      ') +
           `\n  </wpt>`
         );
@@ -930,6 +955,7 @@ function buildGPX(tour) {
           `  <wpt lat="0.0000000" lon="0.0000000">` +
           `\n    <time>${time}</time>` +
           `\n    <name>${xmlEsc(e.event)}</name>` +
+          `\n    <sym>${xmlEsc(eventSym(e.event))}</sym>` +
           extBlockNoGPS +
           `\n  </wpt>`
         );
